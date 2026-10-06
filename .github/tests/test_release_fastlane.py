@@ -5,6 +5,8 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
+
 from catalog_validation.runner import run_validation
 
 
@@ -54,6 +56,99 @@ def test_release_manifest_schema_and_cross_field_validation(tmp_path: Path):
     result = run_validation(tmp_path, [relative])
 
     assert result.blocking == []
+
+
+def test_release_manifest_accepts_optional_rhel(tmp_path: Path):
+    _copy_schema(tmp_path, "discovery-release-manifest-schema.json")
+    relative = "docs/discovery-app/releases/manifests/preview.json"
+    document = _manifest()
+    document["platforms"]["rhel-x64"] = {
+        "installerUrl": "https://example.com/discovery-preview.x86_64.rpm",
+        "sha256": "a" * 64,
+    }
+    _write_json(tmp_path, relative, document)
+
+    result = run_validation(tmp_path, [relative])
+
+    assert result.blocking == []
+
+
+@pytest.mark.parametrize("release", [
+    {"installerUrl": "PLACEHOLDER_PENDING_PUBLISH", "sha256": "a" * 64},
+    {"installerUrl": "http://example.com/discovery.rpm", "sha256": "a" * 64},
+    {"installerUrl": "file:///tmp/discovery.rpm", "sha256": "a" * 64},
+    {"installerUrl": "", "sha256": "a" * 64},
+    {"installerUrl": "https://example.com/discovery rpm", "sha256": "a" * 64},
+    {"installerUrl": "https://example.com/" + "a" * 2048, "sha256": "a" * 64},
+    {"installerUrl": "https://example.com/discovery.rpm", "sha256": "A" * 64},
+    {"installerUrl": "https://example.com/discovery.rpm", "sha256": "a" * 63},
+    {"installerUrl": "https://example.com/discovery.rpm", "sha256": "g" * 64},
+    {"installerUrl": "https://example.com/discovery.rpm"},
+    {"sha256": "a" * 64},
+    {
+        "installerUrl": "https://example.com/discovery.rpm",
+        "sha256": "a" * 64,
+        "unrecognized": True,
+    },
+    None,
+])
+def test_release_manifest_rejects_invalid_rhel(tmp_path: Path, release):
+    _copy_schema(tmp_path, "discovery-release-manifest-schema.json")
+    relative = "docs/discovery-app/releases/manifests/preview.json"
+    document = _manifest()
+    document["platforms"]["rhel-x64"] = release
+    _write_json(tmp_path, relative, document)
+
+    result = run_validation(tmp_path, [relative])
+
+    assert result.blocking
+    assert {failure.rule_id for failure in result.blocking} == {"REL-001"}
+    assert all("platforms.rhel-x64" in failure.message for failure in result.blocking)
+
+
+@pytest.mark.parametrize("platform", ["osx-arm64", "win-arm64", "win-x64"])
+@pytest.mark.parametrize("mutation", ["missing", "url", "placeholder"])
+def test_release_manifest_preserves_required_platform_constraints(
+    tmp_path: Path, platform: str, mutation: str,
+):
+    _copy_schema(tmp_path, "discovery-release-manifest-schema.json")
+    relative = "docs/discovery-app/releases/manifests/preview.json"
+    document = _manifest()
+    document["platforms"]["rhel-x64"] = {
+        "installerUrl": "https://example.com/discovery.rpm",
+        "sha256": "a" * 64,
+    }
+    if mutation == "missing":
+        del document["platforms"][platform]
+    else:
+        document["platforms"][platform]["installerUrl"] = (
+            "PLACEHOLDER_PENDING_PUBLISH"
+            if mutation == "placeholder"
+            else "https://example.com/other-installer"
+        )
+    _write_json(tmp_path, relative, document)
+
+    result = run_validation(tmp_path, [relative])
+
+    assert result.blocking
+    assert {failure.rule_id for failure in result.blocking} == {"REL-001"}
+
+
+def test_release_manifest_rejects_unknown_platform(tmp_path: Path):
+    _copy_schema(tmp_path, "discovery-release-manifest-schema.json")
+    relative = "docs/discovery-app/releases/manifests/preview.json"
+    document = _manifest()
+    document["platforms"]["linux-x64"] = {
+        "installerUrl": "https://example.com/discovery.rpm",
+        "sha256": "a" * 64,
+    }
+    _write_json(tmp_path, relative, document)
+
+    result = run_validation(tmp_path, [relative])
+
+    assert len(result.blocking) == 1
+    assert result.blocking[0].rule_id == "REL-001"
+    assert "linux-x64" in result.blocking[0].message
 
 
 def test_release_manifest_rejects_ring_and_version_regressions(tmp_path: Path):

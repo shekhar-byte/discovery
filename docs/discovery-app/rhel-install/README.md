@@ -43,6 +43,12 @@ https://raw.githubusercontent.com/microsoft/discovery/main/docs/discovery-app/re
 It extracts `platforms.rhel-x64.sha256`, computes the SHA-256 of the supplied
 RPM, and stops before making system changes if the values do not match.
 
+The [release manifest schema](../../schemas/discovery-release-manifest-schema.json)
+supports an optional `rhel-x64` entry alongside the required macOS and Windows
+entries. When present, the RHEL entry must provide an HTTPS `installerUrl` and a
+64-character lowercase hexadecimal `sha256`. Unpublished installer URL
+placeholders are not accepted by release validation.
+
 The installer also validates the RPM package name, architecture, and trusted
 signature before installation.
 

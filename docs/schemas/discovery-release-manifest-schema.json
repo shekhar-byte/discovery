@@ -38,6 +38,10 @@
       "required": ["osx-arm64", "win-arm64", "win-x64"],
       "additionalProperties": false,
       "properties": {
+        "rhel-x64": {
+          "$ref": "#/definitions/platformRelease",
+          "description": "Optional RHEL x64 release. Requires an HTTPS installer URL and a lowercase SHA-256 digest; unpublished URL placeholders are not valid."
+        },
         "osx-arm64": {
           "allOf": [
             { "$ref": "#/definitions/platformRelease" },
